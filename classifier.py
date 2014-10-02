@@ -1,6 +1,7 @@
 import re
 import operator
 import os
+import math
 
 answers_test_set = dict({
   'F-test1': 'F', 
@@ -107,6 +108,20 @@ def add_and_count(tokens, dict_name):
   return dict_name
 
 
+def count_total(vocabulary):
+  """
+  Counts how many occurences there are in total.
+  vocabulary must be a hashable dictionary, not a simple list!
+  """
+
+  total_count = 0
+  for word in vocabulary:
+    total_count = vocabulary[word] + total_count
+
+  return total_count
+
+
+# this function only works with a list
 def strip_below(sorted_list, threshold):
   """Strips a list below a certain threshold."""
 
@@ -122,6 +137,19 @@ def strip_below(sorted_list, threshold):
   return sorted_list
 
 
+# this function only works with a dict
+def strip_dict_below(voc_dict, threshold):
+  """Strips entries in a dict that are below a certain threshold."""
+
+  new_dict = voc_dict.copy()
+
+  for word in voc_dict:
+    if voc_dict[word] < threshold:
+      new_dict.pop(word)
+
+  return new_dict
+
+
 def occurrence_counter(sorted_list, occurence):
   """Counts how many words there are for a specific number of occurences."""
 
@@ -134,6 +162,81 @@ def occurrence_counter(sorted_list, occurence):
   print 'there are ' + str(counter) + ' words that occur ' + str(occurence) + ' times'
 
   return counter
+
+
+def calc_single_word_prob(word, dict_vocabulary):
+  """Calculates the likelihood of a single word occuring in the given text."""
+
+  total = count_total(dict_vocabulary)
+
+  # if word does not exist in dictionary apply some smoothing
+  if word in dict_vocabulary:
+    word_occ = dict_vocabulary[word]
+  else:
+    word_occ = 1 
+
+  prob = float(word_occ) / total
+  prob_log = math.log(prob, 10)
+
+  #print prob
+  #print prob_log
+
+  return prob_log
+
+
+def calc_total_prob(word_list, dict_vocabulary):
+  """
+  Calculates the probability of a certain text being written by male or female
+  based on the given vocabulary.
+  """
+
+  total_prob = 0
+
+  for word in word_list:
+    word_prob = calc_single_word_prob(word, dict_vocabulary)
+    total_prob += word_prob
+
+  return total_prob
+
+
+def iterate_test_set(test_set, female_voc, male_voc):
+  """"
+  Iterate through test set and calculate probabilites 
+  for either being male or female and compare them
+  """
+
+  right_answers = 0
+    
+  for test_doc in answers_test_set:
+
+    answer = ''
+
+    f = open('test/' + test_doc + '.txt', 'r')
+    text = f.read()
+    text = text_normalizer(text)
+    tokens = text_tokenizer(text)
+
+    female_prob = calc_total_prob(tokens, female_voc)
+    male_prob = calc_total_prob(tokens, male_voc)
+
+    # since the probability is a negative log the greater the number
+    # the higher the probability
+    if female_prob > male_prob:
+      print test_doc + ' was written by a female'
+      answer = 'F'
+    else:
+      print test_doc + ' was written by a male'
+      answer = 'M'
+
+    if answer == answers_test_set[test_doc]:
+      right_answers += 1
+      print 'Yeeaaa! Right answer!'
+
+  percentage_correct = float(right_answers) / len(answers_test_set) * 100
+
+  print str(percentage_correct) + '% of the answers were correct'
+
+  return percentage_correct
 
 
 # path of current training data directory
@@ -168,12 +271,16 @@ for filenames in train_files:
       #print filename + ' ' + 'male'
 
 
+# strip word count of infrequently occuring words
+female_total_count_stripped = strip_dict_below(female_total_count, 25)
+male_total_count_stripped = strip_dict_below(male_total_count, 25)
 
 
 # take counted tokens and sort them by frequency in reverse order
 female_total_count_sorted = sorted(female_total_count.items(), key=operator.itemgetter(1), reverse=True)
 male_total_count_sorted = sorted(male_total_count.items(), key=operator.itemgetter(1), reverse=True)
 combined_total_count_sorted = sorted(combined_total_count.items(), key=operator.itemgetter(1), reverse=True)
+
 
 # print length of different vocubularies
 print 'combined total vocabulary length:'
@@ -187,34 +294,51 @@ print len(male_total_count_sorted)
 print '\n'
 
 
+# the probability of a single word
+#word = 'the'
+#prob = calc_single_word_prob(word, female_total_count)
+#print 'Probability of ' + word + ' is ' + str(prob)
+#print '\n'
+
+
 # print occurences of rare words
-occurrence_counter(combined_total_count_sorted, 4)
-occurrence_counter(combined_total_count_sorted, 3)
-occurrence_counter(combined_total_count_sorted, 2)
-occurrence_counter(combined_total_count_sorted, 1)
+#occurrence_counter(combined_total_count_sorted, 4)
+#occurrence_counter(combined_total_count_sorted, 3)
+#occurrence_counter(combined_total_count_sorted, 2)
+#occurrence_counter(combined_total_count_sorted, 1)
 #occurrence_counter(female_total_count_sorted, 1)
 #occurrence_counter(male_total_count_sorted, 1)
 
 
 # strip low frequency words
-female_total_count_sorted = strip_below(female_total_count_sorted, 25)
-male_total_count_sorted = strip_below(male_total_count_sorted, 25)
+#female_total_count_sorted = strip_below(female_total_count_sorted, 25)
+#male_total_count_sorted = strip_below(male_total_count_sorted, 25)
 #combined_total_count_sorted = strip_below(combined_total_count_sorted, 2)
+
+
+# calculate and print the total amount of words used by authors female and male
+#total_word_count_female = count_total(female_total_count)
+#total_word_count_male = count_total(male_total_count)
+
+#print 'There are ' + str(total_word_count_female) + ' words used in total by female authors'
+#print 'There are ' + str(total_word_count_male) + ' words used in total by male authors'
+#print '\n'
+
 
 # delete from certain index on 
 #del female_total_count_sorted[250:]
 #del male_total_count_sorted[250:]
 del combined_total_count_sorted[10:]
 
-print 'females top words:'
-print female_total_count_sorted
-print '\n'
-print 'males top words:'
-print male_total_count_sorted
-print '\n'
+#print 'females top words:'
+#print female_total_count_sorted
+#print '\n'
+#print 'males top words:'
+#print male_total_count_sorted
+#print '\n'
 print 'top 10 words combined:'
 print combined_total_count_sorted
 
-
-
+# do some magic
+iterate_test_set(answers_test_set, female_total_count_stripped, male_total_count_stripped)
 
