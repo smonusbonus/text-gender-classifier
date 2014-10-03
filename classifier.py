@@ -93,7 +93,7 @@ def text_tokenizer(text):
   return result
 
 
-def add_and_count(tokens, dict_name):
+def count_tokens_and_add(tokens, dict_name):
   """Takes a set of tokens, counts them and adds them to a dictionary."""
 
   # count occurences of words in tokens array
@@ -111,7 +111,7 @@ def add_and_count(tokens, dict_name):
 def count_total(vocabulary):
   """
   Counts how many occurences there are in total.
-  vocabulary must be a hashable dictionary, not a simple list!
+  vocabulary must be a hashable dictionary, not a simple list.
   """
 
   total_count = 0
@@ -172,14 +172,14 @@ def calc_single_word_prob(word, dict_vocabulary):
   # if word does not exist in dictionary apply some smoothing
   if word in dict_vocabulary:
     word_occ = dict_vocabulary[word]
+    prob = float(word_occ) / total
   else:
-    word_occ = 1 
-
-  prob = float(word_occ) / total
+    # smoothing
+    word_occ = 4 
+    # add smoothing to total word count
+    prob = float(word_occ) / (total + 4) 
+  
   prob_log = math.log(prob, 10)
-
-  #print prob
-  #print prob_log
 
   return prob_log
 
@@ -206,6 +206,11 @@ def iterate_test_set(test_set, female_voc, male_voc):
   """
 
   right_answers = 0
+
+  # table head
+  print 'Iterating through text files ...'
+  print '+----------------+---------------+---------------+---------------+'
+  print '| file name \t | guess \t | answer \t | y/n \t\t |'
     
   for test_doc in answers_test_set:
 
@@ -219,86 +224,114 @@ def iterate_test_set(test_set, female_voc, male_voc):
     female_prob = calc_total_prob(tokens, female_voc)
     male_prob = calc_total_prob(tokens, male_voc)
 
+    print '+----------------+---------------+---------------+---------------+'
+    
     # since the probability is a negative log the greater the number
     # the higher the probability
     if female_prob > male_prob:
-      print test_doc + ' was written by a female'
+      row = '| ' + test_doc + '\t | female \t | ' + answers_test_set[test_doc] + '\t\t | '
       answer = 'F'
     else:
-      print test_doc + ' was written by a male'
+      row = '| ' + test_doc + '\t | male \t | ' + answers_test_set[test_doc] + '\t\t | '
       answer = 'M'
 
     if answer == answers_test_set[test_doc]:
       right_answers += 1
-      print 'Yeeaaa! Right answer!'
+      row += 'correct \t |'
+    else:
+      row += 'false \t |'
 
+    print row
+
+  print '+----------------+---------------+---------------+---------------+'
   percentage_correct = float(right_answers) / len(answers_test_set) * 100
-
   print str(percentage_correct) + '% of the answers were correct'
 
   return percentage_correct
 
 
-# path of current training data directory
-path_train_data = os.path.dirname(os.path.abspath(__file__)) + '/train/'
-train_files = os.walk(path_train_data)
+def iterate_training_set(train_data_folder):
+  """"
+  Iterate through test set and calculate probabilites 
+  for either being male or female and compare them
+  """
+
+  # path of current training data directory
+  path_train_data = os.path.dirname(os.path.abspath(__file__)) + '/' + train_data_folder + '/'
+  train_files = os.walk(path_train_data)
+
+  # total collection of gender-specific words
+  word_count = dict()
+  word_count['female'] = dict()
+  word_count['male'] = dict()
+  word_count['combined'] = dict()
+
+  # iterate through training data and add words to collection
+  for filenames in train_files:
+    for filename in filenames[2]:
+
+      f = open('train/' + filename, 'r')
+      text = f.read()
+      text = text_normalizer(text)
+      tokens = text_tokenizer(text)
+
+      count_tokens_and_add(tokens, word_count['combined'])
+
+      if filename[0] == 'F':
+        # add tokens to global female dict
+        count_tokens_and_add(tokens, word_count['female'])
+        #print filename + ' ' + 'female'
+      else:
+        # add tokens to global male dict
+        count_tokens_and_add(tokens, word_count['male'])
+        #print filename + ' ' + 'male'
+
+  return word_count
 
 
-# total collection of gender-specific words
-female_total_count = dict()
-male_total_count = dict()
-combined_total_count = dict()
+def print_top_10(combined_voc):
+  """Takes the top 10 words of the vocabulary and prints them in a nice format."""
+
+  del combined_voc[10:]
+
+  print 'These are the top 10 words in the combined vocabulary:'
+  
+  for key in combined_voc:
+    print '+--------+---------------+'
+    print '| ' + key[0] + '\t | ' + str(key[1]) + '\t |'
+
+  print '+--------+---------------+'
+  print '\n'
 
 
-# iterate through training data and add words to collection
-for filenames in train_files:
-  for filename in filenames[2]:
 
-    f = open('train/' + filename, 'r')
-    text = f.read()
-    text = text_normalizer(text)
-    tokens = text_tokenizer(text)
 
-    add_and_count(tokens, combined_total_count)
-
-    if filename[0] == 'F':
-      # add tokens to global female dict
-      add_and_count(tokens, female_total_count)
-      #print filename + ' ' + 'female'
-    else:
-      # add tokens to global male dict
-      add_and_count(tokens, male_total_count)
-      #print filename + ' ' + 'male'
-
+# iterate through training set and return counted words dict
+word_count = iterate_training_set('train')
 
 # strip word count of infrequently occuring words
-female_total_count_stripped = strip_dict_below(female_total_count, 25)
-male_total_count_stripped = strip_dict_below(male_total_count, 25)
+female_total_count_stripped = strip_dict_below(word_count['female'], 25)
+male_total_count_stripped = strip_dict_below(word_count['male'], 25)
+combined_total_count_stripped = strip_dict_below(word_count['combined'], 25)
 
 
 # take counted tokens and sort them by frequency in reverse order
-female_total_count_sorted = sorted(female_total_count.items(), key=operator.itemgetter(1), reverse=True)
-male_total_count_sorted = sorted(male_total_count.items(), key=operator.itemgetter(1), reverse=True)
-combined_total_count_sorted = sorted(combined_total_count.items(), key=operator.itemgetter(1), reverse=True)
+female_total_count_sorted = sorted(female_total_count_stripped.items(), key=operator.itemgetter(1), reverse=True)
+male_total_count_sorted = sorted(male_total_count_stripped.items(), key=operator.itemgetter(1), reverse=True)
+combined_total_count_sorted = sorted(combined_total_count_stripped.items(), key=operator.itemgetter(1), reverse=True)
 
 
-# print length of different vocubularies
-print 'combined total vocabulary length:'
-print len(combined_total_count_sorted)
+# print length of different vocabularies
 print '\n'
-print 'female total vocabulary length:'
-print len(female_total_count_sorted)
-print '\n'
-print 'male total vocabulary length:'
-print len(male_total_count_sorted)
+print 'Occurences of unique words:'
+print '+----------------+---------------+---------------+'
+print '| combined \t | female \t | male \t |'
+print '+----------------+---------------+---------------+'
+print '| ' + str(len(word_count['combined'])) + ' words \t | ' + str(len(word_count['female'])) + ' words \t | ' + str(len(word_count['male'])) + ' words \t |'
+print '+----------------+---------------+---------------+'
 print '\n'
 
 
-# the probability of a single word
-#word = 'the'
-#prob = calc_single_word_prob(word, female_total_count)
-#print 'Probability of ' + word + ' is ' + str(prob)
-#print '\n'
 
 
 # print occurences of rare words
@@ -328,7 +361,6 @@ print '\n'
 # delete from certain index on 
 #del female_total_count_sorted[250:]
 #del male_total_count_sorted[250:]
-del combined_total_count_sorted[10:]
 
 #print 'females top words:'
 #print female_total_count_sorted
@@ -336,8 +368,10 @@ del combined_total_count_sorted[10:]
 #print 'males top words:'
 #print male_total_count_sorted
 #print '\n'
-print 'top 10 words combined:'
-print combined_total_count_sorted
+
+
+# print the top 10 words
+print_top_10(combined_total_count_sorted)
 
 # do some magic
 iterate_test_set(answers_test_set, female_total_count_stripped, male_total_count_stripped)
