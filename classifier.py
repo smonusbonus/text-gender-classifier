@@ -1,8 +1,20 @@
+# import modules
 import re
 import operator
 import os
 import math
 
+"""config global variables"""
+# Simple Laplace smoothing
+smoothing = 4
+# strip vocabulary below this number of occurences
+strip_below_threshold = 15
+# work with which kind of ngrams
+ngram = 'unigram'
+#ngram = 'bigram'
+#ngram = 'trigram'
+
+# this is just for determining accuracy of results
 answers_test_set = dict({
   'F-test1': 'F', 
   'F-test2': 'F', 
@@ -12,7 +24,7 @@ answers_test_set = dict({
   'F-test6': 'F', 
   'M-test7': 'M', 
   'M-test8': 'M', 
-  'M-test9': 'm',
+  'M-test9': 'M',
   'F-test10': 'F',
   'M-test11': 'M',
   'M-test12': 'M',
@@ -57,6 +69,8 @@ answers_test_set = dict({
   })
 
 
+#following are the function definitions
+
 def text_normalizer(raw_text):
   """Return a normalized text string.""" 
 
@@ -65,13 +79,17 @@ def text_normalizer(raw_text):
   raw_text = raw_text.replace("'m", " am")
   raw_text = raw_text.replace("'ve", " have")
   raw_text = raw_text.replace("'ll", " will")
-  raw_text = raw_text.replace("'nt", " not")
+  raw_text = raw_text.replace("'t", " not")
+  raw_text = raw_text.replace("cant", "can not")
+  #raw_text = raw_text.replace("I'd", "I would")
   #text = text.replace("'d", " would")
 
   # replacing the new line symbol with a space
   raw_text = raw_text.replace("\n", " ")
   raw_text = raw_text.replace("(", " ")
   raw_text = raw_text.replace(")", " ")
+  raw_text = raw_text.replace("[", " ")
+  raw_text = raw_text.replace("]", " ")
 
   # transform all words to lowercase
   raw_text = raw_text.lower()
@@ -89,8 +107,27 @@ def text_tokenizer(text):
   # replace occurences of double spaces
   text = re.sub(' +',' ', text)
 
-  result = re.split(r' ', text)
-  return result
+  unigram = re.split(r' ', text)
+  bigram = []
+  trigram = []
+
+  # build set of bigrams based on existing unigrams
+  if ngram == 'bigram':
+    for idx, word in enumerate(unigram):
+      if idx < len(unigram) - 2:
+        item = word + ' ' + unigram[idx + 1]
+        bigram.append(item)
+    return bigram
+
+  if ngram == 'trigram':
+    for idx, word in enumerate(unigram):
+      if idx < len(unigram) - 3:
+        item = word + ' ' + unigram[idx + 1] + ' ' + unigram[idx + 2]
+        trigram.append(item)
+    return trigram
+
+  else:
+    return unigram
 
 
 def count_tokens_and_add(tokens, dict_name):
@@ -175,10 +212,11 @@ def calc_single_word_prob(word, dict_vocabulary):
     prob = float(word_occ) / total
   else:
     # smoothing
-    word_occ = 4 
+    word_occ = smoothing 
     # add smoothing to total word count
-    prob = float(word_occ) / (total + 4) 
+    prob = float(word_occ) / (total + smoothing) 
   
+  # use logarithm to prevent underflow later
   prob_log = math.log(prob, 10)
 
   return prob_log
@@ -245,7 +283,8 @@ def iterate_test_set(test_set, female_voc, male_voc):
 
   print '+----------------+---------------+---------------+---------------+'
   percentage_correct = float(right_answers) / len(answers_test_set) * 100
-  print str(percentage_correct) + '% of the answers were correct'
+  print '----> ' + str(percentage_correct) + '% of the answers were correct'
+  print '\n'
 
   return percentage_correct
 
@@ -270,7 +309,7 @@ def iterate_training_set(train_data_folder):
   for filenames in train_files:
     for filename in filenames[2]:
 
-      f = open('train/' + filename, 'r')
+      f = open(train_data_folder + '/' + filename, 'r')
       text = f.read()
       text = text_normalizer(text)
       tokens = text_tokenizer(text)
@@ -289,20 +328,24 @@ def iterate_training_set(train_data_folder):
   return word_count
 
 
-def print_top_10(combined_voc):
-  """Takes the top 10 words of the vocabulary and prints them in a nice format."""
+def print_top(voc, threshold, voc_type):
+  """Takes the top words of the vocabulary and prints them in a nice format."""
 
-  del combined_voc[10:]
+  del voc[threshold:]
+  index = 1
 
-  print 'These are the top 10 words in the combined vocabulary:'
+  print 'These are the top ' + str(threshold) + ' words in the ' + voc_type + ' vocabulary:'
   
-  for key in combined_voc:
-    print '+--------+---------------+'
-    print '| ' + key[0] + '\t | ' + str(key[1]) + '\t |'
+  for key in voc:
+    print '+--------+---------------+---------------+'
+    print '| ' + str(index) + '\t | ' + key[0] + '\t\t | ' + str(key[1]) + '\t |'
+    index += 1
 
-  print '+--------+---------------+'
+  print '+--------+---------------+---------------+'
   print '\n'
 
+  # return stripped voc
+  return voc
 
 
 
@@ -310,16 +353,14 @@ def print_top_10(combined_voc):
 word_count = iterate_training_set('train')
 
 # strip word count of infrequently occuring words
-female_total_count_stripped = strip_dict_below(word_count['female'], 25)
-male_total_count_stripped = strip_dict_below(word_count['male'], 25)
-combined_total_count_stripped = strip_dict_below(word_count['combined'], 25)
-
+female_total_count_stripped = strip_dict_below(word_count['female'], strip_below_threshold)
+male_total_count_stripped = strip_dict_below(word_count['male'], strip_below_threshold)
+combined_total_count_stripped = strip_dict_below(word_count['combined'], strip_below_threshold)
 
 # take counted tokens and sort them by frequency in reverse order
 female_total_count_sorted = sorted(female_total_count_stripped.items(), key=operator.itemgetter(1), reverse=True)
 male_total_count_sorted = sorted(male_total_count_stripped.items(), key=operator.itemgetter(1), reverse=True)
 combined_total_count_sorted = sorted(combined_total_count_stripped.items(), key=operator.itemgetter(1), reverse=True)
-
 
 # print length of different vocabularies
 print '\n'
@@ -332,8 +373,6 @@ print '+----------------+---------------+---------------+'
 print '\n'
 
 
-
-
 # print occurences of rare words
 #occurrence_counter(combined_total_count_sorted, 4)
 #occurrence_counter(combined_total_count_sorted, 3)
@@ -343,35 +382,40 @@ print '\n'
 #occurrence_counter(male_total_count_sorted, 1)
 
 
-# strip low frequency words
-#female_total_count_sorted = strip_below(female_total_count_sorted, 25)
-#male_total_count_sorted = strip_below(male_total_count_sorted, 25)
-#combined_total_count_sorted = strip_below(combined_total_count_sorted, 2)
+# print the top words for female, male and combined
+comb_top_voc = print_top(combined_total_count_sorted, 5, 'combined')
+female_top_voc = print_top(female_total_count_sorted, 5, 'female')
+male_top_voc = print_top(male_total_count_sorted, 5, 'male')
 
 
-# calculate and print the total amount of words used by authors female and male
-#total_word_count_female = count_total(female_total_count)
-#total_word_count_male = count_total(male_total_count)
+# receive gender-specific words by comparing vocabularies
+# somehow this only works for the first loop, the deletion process does not work 
+# for the second loop, I couldn't figure out why
+"""male_charac = male_top_voc
 
-#print 'There are ' + str(total_word_count_female) + ' words used in total by female authors'
-#print 'There are ' + str(total_word_count_male) + ' words used in total by male authors'
-#print '\n'
+for female_word in female_top_voc:
+  index = 0
+  for male_word in male_top_voc:
+    if male_word[0] == female_word[0]:
+      del male_charac[index]
+    index += 1
 
-
-# delete from certain index on 
-#del female_total_count_sorted[250:]
-#del male_total_count_sorted[250:]
-
-#print 'females top words:'
-#print female_total_count_sorted
-#print '\n'
-#print 'males top words:'
-#print male_total_count_sorted
-#print '\n'
+print 'characteristic male words'
+print male_charac
 
 
-# print the top 10 words
-print_top_10(combined_total_count_sorted)
+female_charac = female_top_voc
+
+for male_word in male_top_voc:
+  index = 0
+  for fe_word in female_top_voc:
+    if fe_word[0] == male_word[0]:
+      del female_charac[index]
+    index += 1
+
+print 'characteristic female words'
+print female_charac"""
+
 
 # do some magic
 iterate_test_set(answers_test_set, female_total_count_stripped, male_total_count_stripped)
